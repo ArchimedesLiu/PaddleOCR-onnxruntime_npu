@@ -38,7 +38,7 @@ def str2int_tuple(v):
 def init_args():
     parser = argparse.ArgumentParser()
     # params for prediction engine
-    parser.add_argument("--use_gpu", type=str2bool, default=True)
+    parser.add_argument("--use_gpu", type=str2bool, default=False)
     parser.add_argument("--use_xpu", type=str2bool, default=False)
     parser.add_argument("--use_npu", type=str2bool, default=False)
     parser.add_argument("--use_mlu", type=str2bool, default=False)
@@ -54,6 +54,8 @@ def init_args():
     parser.add_argument("--precision", type=str, default="fp32")
     parser.add_argument("--gpu_mem", type=int, default=500)
     parser.add_argument("--gpu_id", type=int, default=0)
+    parser.add_argument("--npu_mem", type=int, default=500)
+    parser.add_argument("--npu_id", type=int, default=0)
 
     # params for text detector
     parser.add_argument("--image_dir", type=str)
@@ -198,7 +200,7 @@ def create_predictor(args, mode, logger):
         sys.exit(0)
     if args.use_onnx:
         import onnxruntime as ort
-
+        
         model_file_path = model_dir
         if not os.path.exists(model_file_path):
             raise ValueError("not find model file path {}".format(model_file_path))
@@ -222,6 +224,24 @@ def create_predictor(args, mode, logger):
                 ],
                 sess_options=sess_options,
             )
+        elif args.use_npu:
+            sess = ort.InferenceSession(
+                model_file_path,
+                providers=[
+                    (
+                        "CANNExecutionProvider",
+                        {
+                            "device_id": args.npu_id,
+                            "arena_extend_strategy": "kNextPowerOfTwo",
+                            # "npu_mem_limit": 2 * 1024 * 1024 * 1024,
+                            "op_select_impl_mode": "high_performance",
+                            "optypelist_for_implmode": "Gelu",
+                            "enable_cann_graph": True
+                        },
+                    )  
+                ],
+                sess_options=sess_options,
+            )            
         else:
             sess = ort.InferenceSession(
                 model_file_path,
@@ -344,7 +364,7 @@ def create_predictor(args, mode, logger):
                         logger.info("Please keep your paddlepaddle-gpu >= 2.3.0!")
 
         elif args.use_npu:
-            config.enable_custom_device("npu")
+            config.enable_use_npu(args.npu_mem, args.npu_id)
         elif args.use_mlu:
             config.enable_custom_device("mlu")
         elif args.use_xpu:
